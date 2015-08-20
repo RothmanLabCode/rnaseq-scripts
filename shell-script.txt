@@ -1,0 +1,63 @@
+sudo apt-get update
+sudo apt-get -y upgrade
+sudo apt-get -y install build-essential tmux git gcc make g++ python-dev unzip default-jre libcurl4-openssl-dev zlib1g-dev python-pip fastqc samtools bowtie ncbi-blast+ hmmer emboss
+
+sudo mkfs -t ext4 /dev/xvdb
+sudo mount /dev/xvdb /mnt
+sudo chown -R ubuntu:ubuntu /mnt
+df -h
+git clone https://github.com/trinityrnaseq/trinityrnaseq.git
+cd trinityrnaseq
+make -j4
+PATH=$PATH:$(pwd)
+
+cd $HOME
+wget http://www.usadellab.org/cms/uploads/supplementary/Trimmomatic/Trimmomatic-0.33.zip
+unzip Trimmomatic-0.33.zip
+cd Trimmomatic-0.33
+chmod +x trimmomatic-0.33.jar
+
+mkdir /mnt/reads
+cd /mnt/reads/
+curl -LO https://www.dropbox.com/s/gah3q0gt3z708yu/rnaseq.1.fq.gz
+curl -LO https://www.dropbox.com/s/jt6bapq2kpjnoox/rnaseq.2.fq.gz
+
+mkdir /mnt/trimming
+cd /mnt/trimming
+java -Xmx10g -jar $HOME/Trimmomatic-0.33/trimmomatic-0.33.jar PE \
+-threads 8 -baseout subsamp.Phred2.fq \
+/mnt/reads/rnaseq.1.fq.gz \
+/mnt/reads/rnaseq.2.fq.gz \
+ILLUMINACLIP:$HOME/Trimmomatic-0.33/adapters/TruSeq3-PE.fa:2:30:10 \
+SLIDINGWINDOW:4:2 \
+LEADING:2 \
+TRAILING:2 \
+MINLEN:25
+
+mkdir /mnt/assembly
+cd /mnt/assembly
+tmux new -s trinity
+Trinity --seqType fq --max_memory 10G --left /mnt/trimming/subsamp.Phred2_1P.fq \
+--right /mnt/trimming/subsamp.Phred2_2P.fq --CPU 16
+sed -i 's_|_-_g' /mnt/assembly/trinity_out_dir/Trinity.fasta
+
+cd $HOME
+curl -O http://busco.ezlab.org/files/BUSCO_v1.1b1.tar.gz
+tar -zxf BUSCO_v1.1b1.tar.gz
+cd BUSCO_v1.1b1/
+PATH=$PATH:$(pwd)
+
+mkdir /mnt/busco
+cd /mnt/busco
+tmux new -s busco
+curl -LO http://busco.ezlab.org/files/arthropoda_buscos.tar.gz
+tar -zxf arthropoda_buscos.tar.gz
+python3 /home/ubuntu/BUSCO_v1.1b1/BUSCO_v1.1b1.py \
+-m trans -in /mnt/assembly/trinity_out_dir/Trinity.fasta \
+--cpu 16 -l arthropoda -o trin.assemblty
+
+
+
+
+
+
